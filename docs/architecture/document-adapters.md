@@ -19,7 +19,7 @@ DOCX 文本、排版、分页、评论和 OOXML 导出由上游引擎负责；�
 
 ## 保存与文件权威
 
-一个项目保留默认论文对象。DOCX、LaTeX 和结构内容分别存储，保存或编译不自动切换主源；明确的“设为论文源稿”才更换绑定。当前每格式一份服务端源，不宣称任意多服务端 DOCX 或格式互转。
+一个项目保留默认论文对象。交付树列出所有已登记的 DOCX 和 LaTeX 源稿，包括默认论文中未选为主源的版本。可在交付中继续新建同格式稿件；各稿件有独立对象身份、草稿和修订，数量不按格式限制。默认论文的 DOCX、LaTeX 和结构内容分别存储，明确的“设为论文源稿”才更换该对象的主源绑定。
 
 首次明确导入成为项目论文草稿，已有 DOCX 保存版时拒绝替换。文件 → 打开建立独立本地标签；保存副本是下载，不回写操作系统原件，不替换项目论文。相同文件名不代表相同文件身份。
 
@@ -31,7 +31,8 @@ DOCX 上限32MiB；服务端验证 OPC 容器、CRC、路径、内容类型及�
 
 所有接口沿用当前项目/论文身份、项目授权、准确基础修订与稳定请求标识；没有任意路径导入或数据库直写入口。
 
-- `document.read(project_id)`：读取默认论文、独立来源、当前 DOCX 资产 URL、预览和适配器状态。读取不转换或写入。
+- `document.read(project_id, object_id?)`：读取指定稿件及其独立来源、当前 DOCX 资产 URL、预览和适配器状态。省略对象 ID 时读取默认论文。
+- `document.create(project_id, request_key, format, title)`：登记一份空白 DOCX 或 LaTeX 稿件。返回独立的稿件 ID 和起始修订，沿用后续保存与编译接口。
 - `document.save(project_id, object_id, expected_revision, request_key, format, source)`：DOCX 的 `source={base64, filename}`；LaTeX 为文本。拒绝过期版本，相同请求可重放；当前主源与其他文件保留。首次原生保存建立绑定。
 - `document.select(project_id, object_id, expected_revision, request_key, format)`：明确把一份已保存的 DOCX/LaTeX 设为论文主源。需要源文件存在，采用独立事务、权限检查、CAS 和幂等记录，不转换内容。历史 Univer 也可通过此接口兼容选择。
 - `document.checkout(project_id, object_id, expected_revision, request_key)`：将保存版 DOCX 复制到服务端工作区 `document-work/<id>.docx`，返回 `id/path/base_revision/source_sha256`。工作副本与不可变资产隔离。

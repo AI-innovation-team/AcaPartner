@@ -9,7 +9,7 @@ const evidence=resolve(process.env.DOCUMENT_INTERACTIONS_CAPTURE_DIR||'../.priva
 async function search(page:Page,value:string){await expect(page.locator('.wb-loading')).toHaveCount(0);await expect(page.getByRole('button',{name:'切换项目',exact:true})).toBeVisible();await page.keyboard.press('Meta+k');await page.getByRole('combobox',{name:'搜索内容',exact:true}).fill(value);await page.getByRole('option').filter({hasText:value}).first().click();}
 const editor=(page:Page)=>page.locator('.native-superdoc-editor:visible');
 test('long documents scroll in the real Dockview portal and reach their lower content',async({page})=>{
- await page.setViewportSize({width:1440,height:850});await page.goto(origin+'/?project='+project);await expect(page.getByRole('heading',{name:'科学煮蛋 · 可复现研究示例',exact:true})).toBeVisible();
+ await page.setViewportSize({width:1440,height:850});await page.goto(origin+'/?project='+project);await expect(page.getByRole('heading',{name:'科学煮蛋示例项目',exact:true})).toBeVisible();
  const host=page.locator('.dv-render-overlay>.dv-react-part:visible');await expect.poll(()=>host.evaluate(e=>e.scrollHeight>e.clientHeight+100)).toBeTruthy();const box=await host.boundingBox();await page.mouse.move(box!.x+100,box!.y+200);await page.mouse.wheel(0,900);await expect.poll(()=>host.evaluate(e=>e.scrollTop)).toBeGreaterThan(100);
  await page.getByRole('button',{name:/分析与绘图 · 实际源码和输入输出/}).click();await expect(page.getByRole('heading',{name:'分析与绘图 · 实际源码和输入输出',exact:true})).toBeVisible();await page.mouse.move(box!.x+100,box!.y+200);await page.mouse.wheel(0,1400);await expect.poll(()=>host.evaluate(e=>e.scrollTop)).toBeGreaterThan(100);
 });

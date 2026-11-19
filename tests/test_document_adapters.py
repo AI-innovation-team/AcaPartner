@@ -94,6 +94,38 @@ class DocumentAdapters(unittest.TestCase):
         self.assertEqual(wrong.exception.code, 'source_identity')
         self.assertEqual(self.read()['revision'], self.paper['revision'])
 
+    def test_same_format_manuscripts_have_independent_revisions_and_scope(self):
+        project_id = self.project['id']
+        dispatch = self.app.dispatch
+        primary = self.save('latex', self.tex)
+        for fmt in ('latex', 'docx'):
+            source = self.tex if fmt == 'latex' else {
+                'base64': base64.b64encode(self.docx()).decode(), 'filename': 'draft.docx'}
+            initial = []
+            for index in (1, 2):
+                create = {'action': 'document.create', 'project_id': project_id,
+                          'format': fmt, 'title': f'{fmt} draft {index}', 'request_key': f'{fmt}-new-{index}'}
+                draft = dispatch(create, [project_id])
+                self.assertEqual(dispatch(create, [project_id])['id'], draft['id'])
+                initial.append(draft)
+            first, second = initial
+            self.assertNotEqual(first['id'], second['id'])
+            request = {'action': 'document.save', 'project_id': project_id, 'object_id': second['id'],
+                       'expected_revision': second['revision'], 'request_key': f'{fmt}-second-save',
+                       'format': fmt, 'source': source}
+            saved = dispatch(request, [project_id])
+            read = {'action': 'document.read', 'project_id': project_id, 'object_id': second['id']}
+            self.assertEqual(dispatch(read, [project_id]), saved)
+            self.assertEqual(self.app.store.get(first['id'])['revision'], first['revision'])
+            with self.assertRaises(Problem) as stale:
+                dispatch({**request, 'request_key': f'{fmt}-stale-save'}, [project_id])
+            self.assertEqual(stale.exception.code, 'conflict')
+            foreign = self.app.store.create('project', 'Separate project')
+            with self.assertRaises(Problem) as forbidden:
+                dispatch({**read, 'project_id': foreign['id']})
+            self.assertEqual(forbidden.exception.code, 'forbidden')
+        self.assertEqual(self.read(), primary)
+
     def test_univer_never_exports_old_structured_text_as_docx(self):
         snapshot = {'id': self.paper['id'], 'body': {'dataStream': 'Office source\r\n'}, 'documentStyle': {}}
         self.save('univer', snapshot)

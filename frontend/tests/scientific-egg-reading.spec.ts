@@ -11,7 +11,7 @@ test('egg case explains the goal, sorts numbered questions, and keeps each quest
  const research=(await response.json()).result;
  expect(research.questions.map((q:any)=>q.number)).toEqual(['Q1','Q1.1','Q1.2','Q2','Q2.1','Q2.2','Q2.3']);
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(origin+'/?project='+project);await expect(page.getByRole('heading',{name:'科学煮蛋 · 可复现研究示例',exact:true})).toBeVisible();
+ await page.goto(origin+'/?project='+project);await expect(page.getByRole('heading',{name:'科学煮蛋示例项目',exact:true})).toBeVisible();
  await expect(page.locator('.wb-q-number')).toHaveText(['Q1','Q1.1','Q1.2','Q2','Q2.1','Q2.2','Q2.3']);
  await expect(page.locator('.document:visible')).toContainText('蛋白凝固指数');await expect(page.locator('.document:visible')).toContainText('越高表示越软');
  await page.screenshot({path:captures+'/background.png',fullPage:true});

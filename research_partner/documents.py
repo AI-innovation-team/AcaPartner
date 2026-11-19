@@ -21,7 +21,8 @@ from xml.etree import ElementTree as ET
 from .store import digest, encoded, require
 
 FIELDS = {
-    'document.read': {'action', 'project_id'},
+    'document.read': {'action', 'project_id', 'object_id'},
+    'document.create': {'action', 'project_id', 'request_key', 'format', 'title'},
     'document.save': {'action', 'project_id', 'object_id', 'expected_revision', 'request_key', 'format', 'source'},
     'document.render': {'action', 'project_id', 'object_id', 'expected_revision', 'request_key'},
     'document.checkout': {'action', 'project_id', 'object_id', 'expected_revision', 'request_key'},
@@ -102,7 +103,7 @@ def _working_bytes(app, checkout):
     return validate_docx(raw)
 
 
-def _source(app, data, scope, principal, connection):
+def _project(app, data, scope, principal, connection):
     project = app.access(app.store.get(data.get('project_id'), connection=connection), scope)
     require(project['kind'] == 'project' and not project['archived'], '需要未归档项目')
     require(scope is None or project['id'] in scope, '没有此项目的文稿权限', 'forbidden', 403)
@@ -110,19 +111,24 @@ def _source(app, data, scope, principal, connection):
         from .project_management import authority_scope
         current_scope = authority_scope(app, principal)
         require(current_scope is None or project['id'] in current_scope, '当前身份无此项目权限', 'forbidden', 403)
-    ident = project['metadata'].get('article', {}).get('primary_manuscript_id')
+    return project
+
+
+def _source(app, data, scope, principal, connection):
+    project = _project(app, data, scope, principal, connection)
+    ident = data.get('object_id') or project['metadata'].get('article', {}).get('primary_manuscript_id')
     require(ident, '项目尚未建立论文，请先初始化论文框架', 'manuscript_missing', 409)
-    require(not data.get('object_id') or data['object_id'] == ident, '论文不属于当前项目', 'forbidden', 403)
     obj = app.access(app.store.get(ident, connection=connection), scope)
-    require(obj['project_id'] == project['id'] and obj['kind'] == 'paper' and not obj['archived'],
-            '当前项目的论文源无效', 'manuscript_missing', 409)
+    require(obj['project_id'] == project['id'] and obj['kind'] == 'paper',
+            '稿件不属于当前项目', 'forbidden', 403)
+    require(not obj['archived'], '稿件已归档', 'manuscript_missing', 409)
     return project, obj
 
 
 def _view(app, obj, connection=None):
+    from .artifacts import ArtifactEngine
     from .paper_sources import source_state
-    rendering = app.config.get('rendering', {})
-    compiler = rendering.get('latex') or shutil.which('xelatex') or shutil.which('pdflatex')
+    compiler = ArtifactEngine(app.store, app.config.get('rendering', {})).config['latex']
     return {
         'id': obj['id'], 'project_id': obj['project_id'], 'revision': obj['revision'], 'title': obj['title'],
         'source_state': source_state(obj),
@@ -135,7 +141,7 @@ def _view(app, obj, connection=None):
                      'comments': True, 'tracked_changes': True},
             'univer': {'editor': 'univer', 'snapshot_editing': True, 'docx_exchange_ready': False,
                        'reason': 'DOCX 导入导出需要配置 Univer Pro 转换后端与授权。'},
-            'latex': {'editor': 'codemirror', 'preview': 'pdfjs', 'compiler_available': bool(compiler)},
+            'latex': {'editor': 'codemirror', 'preview': 'pdfjs', 'compiler_available': bool(compiler and shutil.which(compiler))},
         },
     }
 
@@ -158,6 +164,28 @@ def dispatch(app, data, scope=None, principal=None):
         with app.store.read_snapshot() as connection:
             _, obj = _source(app, data, scope, principal, connection)
             return _view(app, obj, connection)
+    if action == 'document.create':
+        fmt, title = data.get('format'), data.get('title')
+        require(fmt in {'docx', 'latex'}, '请选择 DOCX 或 LaTeX')
+        require(isinstance(title, str) and 0 < len(title.strip()) <= 160
+                and not title.strip().startswith('.') and not any(c in '/\\' or ord(c) < 32 for c in title),
+                '请输入有效的稿件名称')
+        with app.store.transaction() as connection:
+            project = _project(app, data, scope, principal, connection)
+            name, fingerprint, prior = _request(app, data, scope, principal, connection)
+            if prior:
+                saved = app.store.get(prior['object_id'], prior['revision'], connection)
+                return {**_view(app, saved, connection), 'replayed': True}
+            from .compatibility import require_features
+            from .project_management import actor
+            require_features(connection, ['native_manuscript_sources_v1', 'native_primary_source_v1'])
+            user = actor(principal or {'kind': 'local_operator'})
+            saved = app.store.create('paper', title, project['id'],
+                                     content={'paper_source_mode': fmt}, actor=user, connection=connection)
+            app.store.relate(project['id'], saved['id'], 'contains', 'confirmed', connection=connection)
+            connection.execute('INSERT INTO kv VALUES(?,?)', (name, encoded({
+                'fingerprint': fingerprint, 'object_id': saved['id'], 'revision': saved['revision']})))
+            return _view(app, saved, connection)
     if action == 'document.select':
         fmt = data.get('format')
         require(fmt in {'docx', 'latex', 'univer'}, '论文源稿格式不支持')

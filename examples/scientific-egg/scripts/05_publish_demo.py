@@ -23,7 +23,7 @@ def publish(base,receipt):
   if not body.get('ok'):raise RuntimeError(str(body))
   return body['result']
  summary=json.loads((ROOT/'results/summary.json').read_text());protocol=json.loads((ROOT/'protocol.json').read_text());captions=json.loads((ROOT/'manuscript/captions.json').read_text());periodic=summary['methods']['periodic'];config_sha=hashlib.sha256((ROOT/'protocol.json').read_bytes()).hexdigest()
- project=call('project.create',title='科学煮蛋 · 可复现研究示例',content={'description':DESCRIPTION},metadata={'synthetic':True,'demo':'scientific_egg_v1','seed':protocol['seed'],'protocol_sha256':config_sha});pid=project['id'];ids={};assets={}
+ project=call('project.create',title='科学煮蛋示例项目',content={'description':DESCRIPTION},metadata={'synthetic':True,'demo':'scientific_egg_v1','seed':protocol['seed'],'protocol_sha256':config_sha});pid=project['id'];ids={};assets={}
  def asset(path,name=None):
   data=path.read_bytes();entry=call('asset.import',project_id=pid,filename=name or path.name,base64=base64.b64encode(data).decode(),provenance='synthetic',source='AcaPartner synthetic cooking demonstration; actual local code output; no laboratory measurements')
   assets[str(path.relative_to(ROOT))]=entry;return entry

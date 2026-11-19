@@ -14,6 +14,24 @@ const node=(page:any,id:string)=>page.locator('[data-id="'+id+'"] .free-node-mai
 const toggle=(page:any,id:string)=>page.locator('[data-id="'+id+'"] .free-card-toggle');
 const viewport=(page:any)=>page.locator('.react-flow__viewport').evaluate((el:Element)=>{const m=new DOMMatrix(getComputedStyle(el).transform);return {x:m.e,y:m.f,zoom:m.a};});
 
+test('home hides the retained research graph and returning restores its camera and folds',async({page,request})=>{
+ const f=await setup(request);
+ await page.goto(origin+'/?project='+f.p.id);
+ await expect(node(page,f.q11)).toHaveCount(0);
+ await toggle(page,f.q1).click();
+ await expect(node(page,f.q11)).toBeVisible();
+ const graphNodes=page.locator('.free-research-map .react-flow__node');
+ const camera=await viewport(page);
+
+ await page.getByRole('button',{name:'主页',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'工作区',exact:true})).toBeVisible();
+ await expect(graphNodes.filter({visible:true})).toHaveCount(0);
+
+ await page.getByRole('button',{name:'项目工作区',exact:true}).click();
+ await expect(node(page,f.q11)).toBeVisible();
+ expect(await viewport(page)).toEqual(camera);
+});
+
 test('card content and separate controls remain stable across zoom levels',async({page,request})=>{
  const f=await setup(request);await page.goto(origin+'/?project='+f.p.id);await node(page,f.a21).click();await page.getByRole('button',{name:'聚焦所选节点',exact:true}).click();
  const card=page.locator('[data-id="'+f.a21+'"] .free-card'),wrapper=page.locator('.react-flow__node[data-id="'+f.a21+'"]');

@@ -78,3 +78,8 @@
 @media(pointer:coarse){.free-map-footer .icon-button,.free-research-map .progress-map-toolbar .icon-button{min-width:36px;min-height:36px}}
 
 .free-layout-state.is-refreshing{inset:10px 14px auto auto;pointer-events:none;background:transparent;font-size:11px}
+/* Measured React Flow nodes explicitly set visibility: visible. Inherit the
+   canvas visibility so Dockview can hide retained tabs without unmounting them. */
+.free-research-map .react-flow__node[style*="visibility: visible"] {
+  visibility: inherit !important;
+}

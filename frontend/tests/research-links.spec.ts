@@ -20,7 +20,7 @@ test('published Chinese manuscript paints with local PDF.js CMaps',async({page})
  const fontWarnings:string[]=[],maps:string[]=[];
  page.on('console',m=>{if(/translateFont failed|Error during font loading|cMapUrl/.test(m.text()))fontWarnings.push(m.text());});
  page.on('response',r=>{if(r.url().includes('/pdfjs/cmaps/')){expect(r.status()).toBe(200);maps.push(r.url());}});
- await page.goto(origin+'/?project='+project);await page.getByRole('heading',{name:'科学煮蛋 · 可复现研究示例',exact:true}).waitFor();
+ await page.goto(origin+'/?project='+project);await page.getByRole('heading',{name:'科学煮蛋示例项目',exact:true}).waitFor();
  await page.keyboard.press('Meta+k');await page.getByRole('combobox',{name:'搜索内容',exact:true}).fill('.tex');await page.getByRole('option').filter({hasText:/\.tex/}).first().click();
  await expect(page.locator('.native-pdf-pages canvas[data-rendered=true]')).toHaveCount(6,{timeout:30000});
  expect(maps.some(url=>/UniGB|Adobe-GB1/.test(url))).toBeTruthy();expect(fontWarnings).toEqual([]);

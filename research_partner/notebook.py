@@ -223,7 +223,12 @@ class NotebookService:
                 opened.append(current)
             state = _open_dir(current, ".notebook", create=True)
             opened.append(state)
-            lock_fd = os.open("lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600, dir_fd=state)
+            # Separate creation from opening so concurrent first requests use
+            # the same lock inode even on filesystems where O_CREAT races.
+            try:
+                lock_fd = os.open("lock", os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_NOFOLLOW, 0o600, dir_fd=state)
+            except FileExistsError:
+                lock_fd = os.open("lock", os.O_RDWR | os.O_NOFOLLOW, dir_fd=state)
             require(stat.S_ISREG(os.fstat(lock_fd).st_mode) and os.fstat(lock_fd).st_nlink == 1,
                     "笔记锁文件无效", "invalid_path", 409)
             fcntl.flock(lock_fd, fcntl.LOCK_EX)

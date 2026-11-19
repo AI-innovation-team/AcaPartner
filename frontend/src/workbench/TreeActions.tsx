@@ -8,12 +8,14 @@ import {command,noteCommand,requestId} from '../api';
 import {editorDraftKey} from '../documents/drafts';
 import {Modal} from './Modal';
 import {errorText} from './useManuscript';
+import {manuscriptExtension,manuscriptView} from './DocumentPanels';
+import type {SourceFormat} from '../documents/types';
 export type TreeItem={id:string;name:string;number?:string;path?:string;view?:ViewSpec;children?:TreeItem[];status?:string;sourceFormat?:string};
 type Intent={kind:'note'|'script'|'question'|'delivery'|'root'|'readonly';folder:string;parent?:string;reason?:string};
 type Undo={kind:'note'|'script'|'object';trash_id?:string;id?:string;revision?:number;name:string;path?:string};
 type NoteRecord={path:string;sha:string;dirty:boolean};
 type ScriptDraft={text:string;base:string;before:string};
-type Panel={kind:string;item?:TreeItem;intent?:Intent;path?:string;notes?:NoteRecord[];script?:any;draft?:ScriptDraft;object?:any;links?:any;trash?:Undo[]};
+type Panel={kind:string;format?:SourceFormat;item?:TreeItem;intent?:Intent;path?:string;notes?:NoteRecord[];script?:any;draft?:ScriptDraft;object?:any;links?:any;trash?:Undo[]};
 type Actions={selected:TreeItem|null;writable:boolean;intent:(item?:TreeItem|null)=>Intent;create:(item?:TreeItem|null)=>void;createKind:(kind:'note'|'script'|'question'|'docx'|'latex')=>void;copy:(item:TreeItem,name?:boolean)=>void;remove:(item:TreeItem)=>void;rename:(item:TreeItem)=>void;trash:()=>void;canRemove:(item:TreeItem)=>boolean;reason:(item:TreeItem)=>string;dialogPending:React.RefObject<boolean>;clearSelection:()=>void};
 const ActionsContext=createContext<Actions|null>(null);
 const directory=(path:string)=>path.includes('/')?path.slice(0,path.lastIndexOf('/')):'';
@@ -22,7 +24,7 @@ function pathOf(item:TreeItem){return item.path||(item.view?.kind==='script'?'sc
 export function TreeActionsProvider({selected,clearSelection,children}:{selected:TreeItem|null;clearSelection:()=>void;children:React.ReactNode}){
  const c=useContext(WorkbenchContext)!,project=c.project?.id,writable=!!project&&c.catalog.project_management.writable_project_ids.includes(project);
  const [panel,setPanel]=useState<Panel|null>(null),[name,setName]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState<{text:string;undo?:Undo[]}|null>(null);
- const cancelButton=useRef<HTMLButtonElement>(null);
+ const cancelButton=useRef<HTMLButtonElement>(null),manuscriptRequest=useRef<{title:string;key:string}|null>(null);
  useEffect(()=>{if(panel?.kind.startsWith('delete-'))cancelButton.current?.focus();},[panel?.kind]);
  const alive=useRef(true),epoch=useRef(0),locked=useRef(false),dialogPending=useRef(false),returnTo=useRef<HTMLElement|null>(null);
  useEffect(()=>()=>{alive.current=false;},[]);
@@ -42,7 +44,12 @@ export function TreeActionsProvider({selected,clearSelection,children}:{selected
  function beginCreate(target:Intent){if(!writable)return;if(target.kind==='question'){c.createQuestion(target.parent);return;}if(target.kind==='note'||target.kind==='script')show({kind:'create',intent:target});}
  function create(item?:TreeItem|null){beginCreate(intent(item));}
  function createKind(kind:'note'|'script'|'question'|'docx'|'latex'){
-  if(kind==='docx'||kind==='latex'){c.manuscript.create(kind);c.openDocument(kind,true);return;}
+  if(!writable)return;
+  if(kind==='docx'||kind==='latex'){
+   if(c.manuscript.doc&&!c.manuscript.has(kind)){c.manuscript.create(kind);c.openDocument(kind,true);}
+   else {manuscriptRequest.current=null;show({kind:'create-manuscript',format:kind});}
+   return;
+  }
   beginCreate({kind,folder:kind==='note'?'notes':kind==='script'?'scripts':'研究'});
  }
  async function copy(item:TreeItem,onlyName=false){const text=onlyName?item.name:item.view?.kind==='question'?item.id:pathOf(item);try{await navigator.clipboard.writeText(text);setNotice({text:onlyName?'已复制名称':'已复制'+(item.view?.kind==='question'?'问题 ID':'项目相对路径')});}catch{show({kind:'copy',path:text});}}
@@ -74,7 +81,17 @@ export function TreeActionsProvider({selected,clearSelection,children}:{selected
  });}
  async function loadTrash(){const turn=++epoch.current;show({kind:'loading'});try{const [notes,scripts,state]=await Promise.all([noteCommand('notes.trash.list',project,{}),command('recipe.script.trash.list',{project_id:project,payload:{}}),fetch('/api/state',{cache:'no-store'}).then(async response=>{const value=await response.json();if(!response.ok)throw new Error(value.error||'归档内容无法读取');return value;})]);if(alive.current&&turn===epoch.current)setPanel({kind:'trash',trash:[...notes.items.map((n:any)=>({kind:'note',trash_id:n.trash_id,name:n.relative_path})),...scripts.items.map((n:any)=>({kind:'script',trash_id:n.trash_id,name:'scripts/'+n.filename})),...state.objects.filter((o:any)=>o.project_id===project&&o.archived&&(o.metadata?.research_role==='research_question_v1'||o.kind==='presentation')).map((o:any)=>({kind:'object',id:o.id,revision:o.revision,name:'研究 / '+o.title}))]});}catch(e){if(alive.current&&turn===epoch.current){setPanel({kind:'failure'});setError(errorText(e));}}}
  async function submit(e:React.FormEvent){e.preventDefault();if(!panel)return;await run(async()=>{
-  if(panel.kind==='create'){
+  if(panel.kind==='create-manuscript'){
+   const format=panel.format!,extension=manuscriptExtension(format),nameInput=name.trim();
+   const title=nameInput.toLowerCase().endsWith(extension)?nameInput.slice(0,-extension.length).trim():nameInput;
+   if(manuscriptRequest.current?.title!==title)manuscriptRequest.current={title,key:requestId()};
+   const saved=await command('document.create',{project_id:project,title,format,request_key:manuscriptRequest.current.key});
+   assertCurrent();
+   await c.refresh();
+   assertCurrent();
+   c.open(manuscriptView(format,saved.id,c.manuscript.doc?.id,saved.title+extension),true);
+   finish();
+  }else if(panel.kind==='create'){
    const base=name.trim();if(!base||base.startsWith('/')||/[\\\u0000]/.test(base)||base.split('/').some(p=>!p||p==='.'||p==='..'))throw new Error('请输入当前目录中的有效名称或子目录路径。');
    if(panel.intent!.kind==='note'){const file=base.endsWith('.md')?base:base+'.md',path=panel.intent!.folder+'/'+file;await noteCommand('notes.create',project,{relative_path:path,markdown:'# '+basename(file).replace(/\.md$/,'')+'\n\n',if_absent:true});await refresh();c.open({id:'note:'+path,kind:'note',title:basename(path),value:path,data:{edit:true}},true);reveal(path);}
    else {const filename=base.endsWith('.py')?base:base+'.py';if(filename.includes('/'))throw new Error('Python 工作副本目前放在 scripts/ 直属目录。');await command('recipe.script.write',{project_id:project,request_id:requestId(),payload:{filename,code:'# '+filename+'\n',expected_sha256:null}});await refresh();c.open({id:'script:'+filename,kind:'script',title:filename,value:filename,data:{edit:true}},true);reveal('scripts/'+filename);}
@@ -99,22 +116,23 @@ export function TreeActionsProvider({selected,clearSelection,children}:{selected
  });}
  const a:Actions={selected,writable,intent,create,createKind,copy:(item,name)=>void copy(item,name),remove:item=>void prepareRemove(item),rename:item=>void prepareRename(item),trash:()=>void loadTrash(),canRemove,reason,dialogPending,clearSelection};
  const isDelete=panel?.kind.startsWith('delete-'),dirty=panel?.notes?.some(n=>n.dirty)||panel?.draft&&panel.draft.text!==panel.draft.before;
- const title=panel?.kind==='create'?(panel.intent?.kind==='script'?'新建 Python 脚本':'新建笔记'):panel?.kind==='rename'?'重命名笔记':isDelete?'删除 '+panel?.item?.name:panel?.kind==='trash'?'回收站':panel?.kind==='copy'?'复制路径':'读取内容';
+ const title=panel?.kind==='create-manuscript'?'新建 '+(panel.format==='docx'?'DOCX':'LaTeX')+' 源稿':panel?.kind==='create'?(panel.intent?.kind==='script'?'新建 Python 脚本':'新建笔记'):panel?.kind==='rename'?'重命名笔记':isDelete?'删除 '+panel?.item?.name:panel?.kind==='trash'?'回收站':panel?.kind==='copy'?'复制路径':'读取内容';
  return <ActionsContext.Provider value={a}>{children}{notice&&<div className="wb-tree-notice" role="status"><span>{notice.text}</span>{notice.undo?.length===1&&<button disabled={busy||!writable} onClick={()=>void restore(notice.undo![0])}>撤销</button>}{notice.undo&&notice.undo.length>1&&<button disabled={busy||!writable} onClick={()=>void loadTrash()}>打开回收站</button>}<button aria-label="关闭通知" onClick={()=>setNotice(null)}><X/></button></div>}{panel&&<Modal title={title} close={close} busy={busy}><form className="wb-form" onSubmit={submit}>
   {error&&<p className="native-alert" role="alert">{error}</p>}
   {panel.kind==='loading'&&<p role="status">正在读取当前保存版…</p>}
   {panel.kind==='copy'&&<><p>剪贴板不可用，请选中后复制。</p><input aria-label="路径" readOnly autoFocus value={panel.path||''} onFocus={e=>e.currentTarget.select()}/></>}
   {(panel.kind==='create'||panel.kind==='rename')&&<><p className="runtime-caption">位置：{panel.intent?.folder||directory(panel.notes![0].path)}/</p><input aria-label="名称" autoFocus required value={name} disabled={busy||!!panel.links} onChange={e=>setName(e.target.value)}/></>}
+  {panel.kind==='create-manuscript'&&<><p className="runtime-caption">位置：交付</p><input aria-label="稿件名称" autoFocus required maxLength={160} value={name} disabled={busy} onChange={e=>setName(e.target.value)}/></>}
   {panel.links&&<p>发现 {panel.links.incoming.length} 处指向此笔记的链接、{panel.links.outgoing.length} 处相对链接可能受影响。正文链接不会自动改写；确认已检查后继续。</p>}
   {isDelete&&<><p>{panel.kind==='delete-object'?'此内容将归档，可撤销。子问题与历史修订保留。':panel.kind==='delete-note'?(panel.notes?.length||0)+' 篇笔记将移到回收站，可恢复。':'Python 工作副本将移到回收站；已登记的源码快照与研究结果保留。'}</p>{dirty&&<p>未保存修改会先保存，再一同移入回收站；保存冲突时停止删除。</p>}</>}
   {panel.kind==='trash'&&<div className="wb-trash-list">{panel.trash?.length?panel.trash.map(t=><div key={t.kind+(t.trash_id||t.id)}><span title={t.name}>{t.name}</span><button type="button" className="button quiet" disabled={busy} aria-label={'恢复 '+t.name} onClick={()=>void restore(t)}><RotateCcw/>恢复</button></div>):<p>回收站为空。</p>}</div>}
-  <div className="wb-form-actions"><button ref={cancelButton} type="button" className="button quiet" disabled={busy} autoFocus={!!isDelete} onClick={close}>{panel.kind==='trash'||panel.kind==='copy'||panel.kind==='failure'?'关闭':'取消'}</button>{(panel.kind==='create'||panel.kind==='rename'||isDelete)&&<button type="submit" className={'button '+(isDelete?'danger':'primary')} disabled={busy||panel.kind==='delete-note'&&!panel.notes?.length}>{busy?'处理中…':panel.kind==='create'?'新建':panel.kind==='rename'?(panel.links?'确认重命名':'重命名'):panel.kind==='delete-object'?'归档':dirty?'保存并移到回收站':'移到回收站'}</button>}</div>
+  <div className="wb-form-actions"><button ref={cancelButton} type="button" className="button quiet" disabled={busy} autoFocus={!!isDelete} onClick={close}>{panel.kind==='trash'||panel.kind==='copy'||panel.kind==='failure'?'关闭':'取消'}</button>{(panel.kind==='create'||panel.kind==='create-manuscript'||panel.kind==='rename'||isDelete)&&<button type="submit" className={'button '+(isDelete?'danger':'primary')} disabled={busy||panel.kind==='delete-note'&&!panel.notes?.length}>{busy?'处理中…':panel.kind.startsWith('create')?'新建':panel.kind==='rename'?(panel.links?'确认重命名':'重命名'):panel.kind==='delete-object'?'归档':dirty?'保存并移到回收站':'移到回收站'}</button>}</div>
  </form></Modal>}</ActionsContext.Provider>;
 }
 function NewChoices({Item,item}:{Item:any;item?:TreeItem|null}){const a=useContext(ActionsContext)!,c=useContext(WorkbenchContext)!,target=a.intent(item);if(target.kind==='readonly')return <Item disabled><Plus/>新建内容…</Item>;
  if(['note','script','question'].includes(target.kind))return <Item disabled={!a.writable} onSelect={()=>a.create(item)}><Plus/>{target.kind==='note'?'新建笔记…':target.kind==='script'?'新建 Python 脚本…':target.parent?'新建子问题…':'新建研究问题…'}</Item>;
- if(target.kind==='delivery')return <>{(['docx','latex'] as const).map(kind=><Item key={kind} disabled={!a.writable||c.manuscript.has(kind)} onSelect={()=>a.createKind(kind)}><FileText/>{c.manuscript.has(kind)?'已有 ':'添加 '}{kind==='docx'?'DOCX':'LaTeX'} 源稿</Item>)}</>;
- return <><Item disabled={!a.writable} onSelect={()=>a.createKind('question')}><Microscope/>研究问题 · 研究</Item><Item disabled={!a.writable} onSelect={()=>a.createKind('note')}><NotebookPen/>笔记 · notes/</Item><Item disabled={!a.writable} onSelect={()=>a.createKind('script')}><FileCode/>Python 脚本 · scripts/</Item>{(['docx','latex'] as const).map(kind=><Item key={kind} disabled={!a.writable||c.manuscript.has(kind)} onSelect={()=>a.createKind(kind)}><FileText/>{c.manuscript.has(kind)?'已有 ':'添加 '}{kind==='docx'?'DOCX':'LaTeX'} 源稿</Item>)}</>;
+ if(target.kind==='delivery')return <>{(['docx','latex'] as const).map(kind=><Item key={kind} disabled={!a.writable} onSelect={()=>a.createKind(kind)}><FileText/>{c.manuscript.has(kind)?'新建 ':'添加 '}{kind==='docx'?'DOCX':'LaTeX'} 源稿</Item>)}</>;
+ return <><Item disabled={!a.writable} onSelect={()=>a.createKind('question')}><Microscope/>研究问题 · 研究</Item><Item disabled={!a.writable} onSelect={()=>a.createKind('note')}><NotebookPen/>笔记 · notes/</Item><Item disabled={!a.writable} onSelect={()=>a.createKind('script')}><FileCode/>Python 脚本 · scripts/</Item>{(['docx','latex'] as const).map(kind=><Item key={kind} disabled={!a.writable} onSelect={()=>a.createKind(kind)}><FileText/>{c.manuscript.has(kind)?'新建 ':'添加 '}{kind==='docx'?'DOCX':'LaTeX'} 源稿</Item>)}</>;
 }
 function NodeItems({item}:{item:TreeItem}){const a=useContext(ActionsContext)!,c=useContext(WorkbenchContext)!;return <><Menu.Label title={pathOf(item)}>{pathOf(item)}</Menu.Label>{item.view&&<Menu.Item onSelect={()=>c.open(item.view!,true)}><FileText/>打开</Menu.Item>}<NewChoices Item={Menu.Item} item={item}/><Menu.Separator/><Menu.Item onSelect={()=>a.copy(item)}><Copy/>{item.view?.kind==='question'?'复制问题 ID':'复制路径'}</Menu.Item><Menu.Item onSelect={()=>a.copy(item,true)}><Copy/>复制名称</Menu.Item>{item.view?.kind==='note'&&<Menu.Item disabled={!a.writable} onSelect={()=>a.rename(item)}><Pencil/>重命名…</Menu.Item>}<Menu.Separator/><Menu.Item className="danger" disabled={!a.canRemove(item)} onSelect={()=>a.remove(item)}><Trash2/>删除…</Menu.Item>{!a.canRemove(item)&&<Menu.Label className="wb-tree-menu-reason">{a.reason(item)}</Menu.Label>}<Menu.Item disabled={!a.writable} onSelect={a.trash}><RotateCcw/>回收站</Menu.Item></>;}
 export function TreeNodeMenu({item,select,children}:{item:TreeItem;select:()=>void;children:React.ReactElement}){const a=useContext(ActionsContext)!;return <Menu.Root onOpenChange={open=>{if(open)select();}}><Menu.Trigger asChild onContextMenu={e=>e.stopPropagation()}>{children}</Menu.Trigger><Menu.Portal><Menu.Content className="wb-tree-menu" collisionPadding={8} onEscapeKeyDown={e=>e.stopPropagation()} onCloseAutoFocus={e=>{if(a.dialogPending.current)e.preventDefault();}}><NodeItems item={item}/></Menu.Content></Menu.Portal></Menu.Root>;}
