@@ -27,6 +27,14 @@ DISTRIBUTION_FOLDERS = (
     "integrations/codex",
     *TEST_FOLDERS,
 )
+EGG_MEMBERS = (
+    (
+        Path(__file__).resolve().parents[1]
+        / "src/research_partner/resources/scientific-egg-files.txt"
+    )
+    .read_text(encoding="utf-8")
+    .splitlines()
+)
 DISTRIBUTION_FILES = (
     "README.md",
     "LICENSE",
@@ -47,64 +55,7 @@ DISTRIBUTION_FILES = (
     "tests/fixtures/documents/input.docx",
     "tests/fixtures/documents/review-fixture.docx",
     "tests/fixtures/research-graph-egg-layout.json",
-    "examples/scientific-egg/FIGURE_CONTRACT.md",
-    "examples/scientific-egg/README.md",
-    "examples/scientific-egg/data/data_dictionary.json",
-    "examples/scientific-egg/data/observations.csv",
-    "examples/scientific-egg/data/temperature_traces.csv",
-    "examples/scientific-egg/figures/fig1_thermal.alignment.json",
-    "examples/scientific-egg/figures/fig1_thermal.axes.json",
-    "examples/scientific-egg/figures/fig1_thermal.collisions.json",
-    "examples/scientific-egg/figures/fig1_thermal.pdf",
-    "examples/scientific-egg/figures/fig1_thermal.png",
-    "examples/scientific-egg/figures/fig1_thermal.svg",
-    "examples/scientific-egg/figures/fig2_joint.alignment.json",
-    "examples/scientific-egg/figures/fig2_joint.axes.json",
-    "examples/scientific-egg/figures/fig2_joint.collisions.json",
-    "examples/scientific-egg/figures/fig2_joint.pdf",
-    "examples/scientific-egg/figures/fig2_joint.png",
-    "examples/scientific-egg/figures/fig2_joint.svg",
-    "examples/scientific-egg/figures/fig3_robustness.alignment.json",
-    "examples/scientific-egg/figures/fig3_robustness.axes.json",
-    "examples/scientific-egg/figures/fig3_robustness.collisions.json",
-    "examples/scientific-egg/figures/fig3_robustness.pdf",
-    "examples/scientific-egg/figures/fig3_robustness.png",
-    "examples/scientific-egg/figures/fig3_robustness.svg",
-    "examples/scientific-egg/figures/figS1_conditions.alignment.json",
-    "examples/scientific-egg/figures/figS1_conditions.axes.json",
-    "examples/scientific-egg/figures/figS1_conditions.collisions.json",
-    "examples/scientific-egg/figures/figS1_conditions.pdf",
-    "examples/scientific-egg/figures/figS1_conditions.png",
-    "examples/scientific-egg/figures/figS1_conditions.svg",
-    "examples/scientific-egg/figures/reference_eggs.json",
-    "examples/scientific-egg/manuscript/captions.json",
-    "examples/scientific-egg/manuscript/paper.docx",
-    "examples/scientific-egg/manuscript/paper.md",
-    "examples/scientific-egg/manuscript/paper.tex",
-    "examples/scientific-egg/manuscript/reference.docx",
-    "examples/scientific-egg/protocol.json",
-    "examples/scientific-egg/requirements.txt",
-    "examples/scientific-egg/results/batch_summary.csv",
-    "examples/scientific-egg/results/classified_samples.csv",
-    "examples/scientific-egg/results/condition_summary.csv",
-    "examples/scientific-egg/results/method_summary.csv",
-    "examples/scientific-egg/results/quality_checks.json",
-    "examples/scientific-egg/results/run_receipt.json",
-    "examples/scientific-egg/results/summary.json",
-    "examples/scientific-egg/results/threshold_sensitivity.csv",
-    "examples/scientific-egg/results/verification.json",
-    "examples/scientific-egg/run_demo.py",
-    "examples/scientific-egg/scripts/01_simulate.py",
-    "examples/scientific-egg/scripts/02_analyze.py",
-    "examples/scientific-egg/scripts/03_plot.py",
-    "examples/scientific-egg/scripts/04_write_paper.py",
-    "examples/scientific-egg/scripts/05_publish_demo.py",
-    "examples/scientific-egg/scripts/case_content.py",
-    "examples/scientific-egg/scripts/free_graph.py",
-    "examples/scientific-egg/scripts/leaf_graph.py",
-    "examples/scientific-egg/scripts/research_graph.py",
-    "examples/scientific-egg/scripts/revise_graph.py",
-    "examples/scientific-egg/scripts/verify_demo.py",
+    *(f"examples/scientific-egg/{name}" for name in EGG_MEMBERS),
     "docs/user/quickstart.md",
     "docs/release/RELEASE.md",
     "frontend/workdesk/package.json",
@@ -225,6 +176,8 @@ def distribution_inputs(root):
             if distributed_source(name) and not name.startswith(WEB_RESOURCES + "/"):
                 inputs[name] = name
     for name in DISTRIBUTION_FILES:
+        if not _public_file(name):
+            raise ValueError("Invalid public distribution member: " + name)
         path = root / name
         _check_source_path(root, path)
         if path.is_file():

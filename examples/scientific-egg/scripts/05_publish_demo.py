@@ -22,6 +22,13 @@ def publish(base,receipt):
   except urllib.error.HTTPError as e:raise RuntimeError(action+': '+e.read().decode()) from e
   if not body.get('ok'):raise RuntimeError(str(body))
   return body['result']
+ def read_object(ident):
+  return next(o for o in json.load(urllib.request.urlopen(base+'/api/state'))['objects'] if o['id']==ident)
+ output=create_case(call,read_object,render_latex=True)
+ output['url']=base+'/?project='+output['project_id']
+ receipt.parent.mkdir(parents=True,exist_ok=True);receipt.write_text(json.dumps(output,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'url':output['url'],'primary':output['primary_format'],'latex_rendered':output['latex_rendered'],'assets':output['registered_assets'],'files':output['project_file_count'],'synthetic':True}))
+
+def create_case(call,read_object,*,render_latex):
  summary=json.loads((ROOT/'results/summary.json').read_text());protocol=json.loads((ROOT/'protocol.json').read_text());captions=json.loads((ROOT/'manuscript/captions.json').read_text());periodic=summary['methods']['periodic'];config_sha=hashlib.sha256((ROOT/'protocol.json').read_bytes()).hexdigest()
  project=call('project.create',title='科学煮蛋示例项目',content={'description':DESCRIPTION},metadata={'synthetic':True,'demo':'scientific_egg_v1','seed':protocol['seed'],'protocol_sha256':config_sha});pid=project['id'];ids={};assets={}
  def asset(path,name=None):
@@ -79,14 +86,15 @@ def publish(base,receipt):
  call('workbench.background.save',project_id=pid,expected_revision=research['project']['revision'],background=case['background'],request_key=str(uuid.uuid4()))
  # Default required paper: real DOCX, separate saved LaTeX and registered local figure attachments.
  paper=call('document.read',project_id=pid)
- paper_object=next(o for o in json.load(urllib.request.urlopen(base+'/api/state'))['objects'] if o['id']==paper['id'])
+ paper_object=read_object(paper['id'])
  latex_assets={name+'.png':figure_assets[name+'.png']['sha'] for name in figures}
  updated=call('object.save',id=paper['id'],expected_revision=paper['revision'],title='科学煮蛋 · 从配对达标到稳定性',content={**paper_object['content'],'latex_assets':latex_assets,'source_refs':[{'id':x['id'],'revision':x['revision']} for x in [data,analysis,result,*figures.values()]]})
  paper=call('document.save',project_id=pid,object_id=paper['id'],expected_revision=updated['revision'],request_key=str(uuid.uuid4()),format='docx',source={'base64':base64.b64encode((ROOT/'manuscript/paper.docx').read_bytes()).decode(),'filename':'scientific-egg-paper.docx'})
  paper=call('document.save',project_id=pid,object_id=paper['id'],expected_revision=paper['revision'],request_key=str(uuid.uuid4()),format='latex',source=(ROOT/'manuscript/paper.tex').read_text())
  render=None
- try:render=call('document.render',project_id=pid,object_id=paper['id'],expected_revision=paper['revision'],request_key=str(uuid.uuid4()))
- except RuntimeError as error:print('LaTeX preview unavailable:',error)
+ if render_latex:
+  try:render=call('document.render',project_id=pid,object_id=paper['id'],expected_revision=paper['revision'],request_key=str(uuid.uuid4()))
+  except RuntimeError as error:print('LaTeX preview unavailable:',error)
  # Package already generated public artifacts; no credentials, workspace paths or private notes.
  bundle=package_case()
  package=asset(bundle)
@@ -108,8 +116,8 @@ def publish(base,receipt):
  assert paper['source_state']['mode']=='docx'
  graph=configure_graph(call,pid)
  graph['free_graph']=configure_free_graph(call,pid)
- output={'research_graph':graph,'project_id':pid,'url':base+'/?project='+pid,'paper_id':paper['id'],'primary_format':paper['source_state']['mode'],'latex_rendered':bool(render),'objects':{k:v['id'] for k,v in ids.items() if isinstance(v,dict) and 'id' in v},'figures':{k:v['id'] for k,v in figures.items()},'registered_assets':len(assets),'project_file_count':len(files['entries']),'source_data_sha256':raw['sha'],'summary':summary['methods'],'synthetic':True}
- receipt.parent.mkdir(parents=True,exist_ok=True);receipt.write_text(json.dumps(output,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'url':output['url'],'primary':output['primary_format'],'latex_rendered':bool(render),'assets':len(assets),'files':len(files['entries']),'synthetic':True}))
+ return {'research_graph':graph,'project_id':pid,'paper_id':paper['id'],'primary_format':paper['source_state']['mode'],'latex_rendered':bool(render),'objects':{k:v['id'] for k,v in ids.items() if isinstance(v,dict) and 'id' in v},'figures':{k:v['id'] for k,v in figures.items()},'registered_assets':len(assets),'project_file_count':len(files['entries']),'source_data_sha256':raw['sha'],'summary':summary['methods'],'synthetic':True}
+
 def update_case(base,pid,receipt):
  """Revise the authored example through CAS APIs, retaining user files and manuscript."""
  if urllib.parse.urlparse(base).hostname not in {'localhost','127.0.0.1'}:raise ValueError('Use an explicitly local workbench instance.')
@@ -185,6 +193,13 @@ def update_case(base,pid,receipt):
  receipt.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n');print(json.dumps(result,ensure_ascii=False))
 
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:8924');p.add_argument('--receipt',type=Path,default=ROOT.parents[1]/'.private/egg-showcase/publish.json');p.add_argument('--update-project',help='Revise an existing egg case; retain its paper and notes.');args=p.parse_args()
- if args.update_project:update_case(args.base_url.rstrip('/'),args.update_project,args.receipt)
+ p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:8924');p.add_argument('--receipt',type=Path,default=ROOT.parents[1]/'.private/egg-showcase/publish.json');p.add_argument('--initial-workspace',type=Path,help='Populate a new, empty staging workspace offline.');p.add_argument('--update-project',help='Revise an existing egg case; retain its paper and notes.');args=p.parse_args()
+ if args.initial_workspace:
+  from research_partner.app import App
+  if args.initial_workspace.exists():p.error('initial workspace must be new')
+  from research_partner.storage.store import uid
+  app=App(args.initial_workspace,{'workdesk_w1a':True})
+  app.store.set_setting('workspace_id',uid('SPACE'))
+  create_case(lambda action,**fields:app.dispatch({'action':action,**fields}),app.get,render_latex=False)
+ elif args.update_project:update_case(args.base_url.rstrip('/'),args.update_project,args.receipt)
  else:publish(args.base_url.rstrip('/'),args.receipt)

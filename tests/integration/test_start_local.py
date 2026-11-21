@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from research_partner.app import App
 from research_partner.http.accounts import LocalAccounts
 from research_partner.storage.store import Store
 
@@ -92,6 +93,47 @@ class StartLocal(unittest.TestCase):
         )
         self.assertNotIn(
             (self.data / "auth/owner.token").read_text().strip(), json.dumps(result)
+        )
+
+    def test_first_workbench_contains_editable_example_and_preserves_its_history(self):
+        self.prepare()
+        app = App(self.data / "workspace")
+        (project,) = app.store.objects(kinds=["project"])
+        self.assertEqual(project["title"], "科学煮蛋示例项目")
+        pid = project["id"]
+        graph = app.dispatch({"action": "workbench.graph.read", "project_id": pid})
+        self.assertEqual(
+            {node["kind"] for node in graph["nodes"]}, {"root", "Q", "A", "E", "C"}
+        )
+        document = app.dispatch({"action": "document.read", "project_id": pid})
+        self.assertTrue(document["sources"]["latex"])
+        docx = app.store.blobs / document["sources"]["docx"]["url"].split("/")[-1]
+        self.assertTrue(docx.read_bytes().startswith(b"PK"))
+        app.store.save(pid, project["revision"], title="我的煮蛋研究", archived=True)
+        self.prepare()
+        (kept,) = app.store.objects(kinds=["project"], include_archived=True)
+        self.assertEqual(
+            (kept["id"], kept["title"], kept["archived"]), (pid, "我的煮蛋研究", True)
+        )
+
+    def test_existing_workspace_and_failed_first_run(self):
+        from research_partner.packaging.starter import initialize_starter_project
+        from research_partner.storage.store import Problem
+
+        workspace = self.data / "workspace"
+        with mock.patch(
+            "research_partner.packaging.starter.subprocess.run",
+            side_effect=OSError("fixture"),
+        ):
+            with self.assertRaisesRegex(Problem, "fixture"):
+                initialize_starter_project(workspace)
+        self.assertFalse(workspace.exists())
+        self.assertEqual(list(self.data.iterdir()), [])
+        store = Store(workspace)
+        project = store.create("project", "原有项目")
+        initialize_starter_project(workspace)
+        self.assertEqual(
+            [p["id"] for p in store.objects(kinds=["project"])], [project["id"]]
         )
 
     def test_repeated_prepare_keeps_account_token_config_and_budget(self):

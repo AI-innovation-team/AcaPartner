@@ -40,6 +40,12 @@ def main(argv=None):
             result = restore_workspace(args.archive, Path(args.workspace).expanduser())
         else:
             config = json.loads(args.config.read_text()) if args.config else {}
+            if args.command in {"init", "serve"} and config.get("workdesk_w1a"):
+                from research_partner.packaging.starter import (
+                    initialize_starter_project,
+                )
+
+                initialize_starter_project(args.workspace)
             app = App(args.workspace, config)
             if not app.store.setting("workspace_id"):
                 app.store.set_setting("workspace_id", uid("SPACE"))

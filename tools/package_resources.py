@@ -16,7 +16,12 @@ from setuptools.build_meta import (
 from setuptools.command.build_py import build_py
 from setuptools.command.sdist import sdist
 
-from tools.build import WEB_RESOURCES, distributed_source, distribution_inputs
+from tools.build import (
+    EGG_MEMBERS,
+    WEB_RESOURCES,
+    distributed_source,
+    distribution_inputs,
+)
 from tools.start_local import check_frontend
 
 
@@ -30,11 +35,15 @@ def resource_inputs(root):
         raise ValueError(
             "Missing legacy frontend: frontend/legacy/index.html or assembled resources/web/legacy/index.html"
         )
-    return {
+    resources = {
         name: source
         for name, source in inputs.items()
         if name.startswith("src/research_partner/resources/")
     }
+    for member in EGG_MEMBERS:
+        source = f"examples/scientific-egg/{member}"
+        resources[f"src/research_partner/resources/{source}"] = inputs[source]
+    return resources
 
 
 class AssembleBuildPy(build_py):
