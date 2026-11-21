@@ -46,6 +46,7 @@ import http.client, json, pathlib, secrets, sys, tempfile, threading
 from research_partner.app import App
 from research_partner.http.server import serve
 from research_partner.resources import package_root, resource_path, web_directory
+from research_partner.packaging.starter import initialize_starter_project
 assert pathlib.Path(sys.prefix) in package_root().parents, package_root()
 for interface in ('workdesk', 'legacy'):
     assert (web_directory(interface) / 'index.html').is_file(), interface
@@ -60,8 +61,13 @@ with tempfile.TemporaryDirectory() as temporary:
     token = root / 'token'
     token.write_text(secrets.token_urlsafe(32))
     token.chmod(0o600)
+    initialize_starter_project(root / 'workspace')
     app = App(root / 'workspace', {'access_token_file': str(token), 'workdesk_w1a': True})
     assert app.runner is None
+    starter, = app.store.objects(kinds=['project'])
+    assert starter['title'] == '科学煮蛋示例项目'
+    paper = app.dispatch({'action': 'document.read', 'project_id': starter['id']})
+    assert paper['sources']['docx'] and paper['sources']['latex']
     project = app.dispatch({'action': 'project.create', 'title': 'Wheel fixture'})
     assert project['title'] == 'Wheel fixture'
     server = serve(app, '127.0.0.1', 0)
