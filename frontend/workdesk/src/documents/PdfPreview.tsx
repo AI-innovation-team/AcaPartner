@@ -4,7 +4,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type {RenderRecord} from './types';
 GlobalWorkerOptions.workerSrc=workerUrl;
 
-export default function PdfPreview({record,revision,dirty}:{record:RenderRecord|null;revision:number;dirty:boolean}) {
+export default function PdfPreview({record,revision,dirty,compilerAvailable}:{compilerAvailable:boolean;record:RenderRecord|null;revision:number;dirty:boolean}) {
   const host=useRef<HTMLDivElement>(null),[pdf,setPdf]=useState<PDFDocumentProxy|null>(null),[error,setError]=useState(''),[width,setWidth]=useState(0);
   useEffect(()=>{if(!host.current)return;const observer=new ResizeObserver(([entry])=>setWidth(entry.contentRect.width));observer.observe(host.current);return()=>observer.disconnect();},[]);
   useEffect(()=>{
@@ -27,5 +27,5 @@ export default function PdfPreview({record,revision,dirty}:{record:RenderRecord|
     }};
     void render().catch(e=>{if(!cancelled)setError(String(e));});return()=>{cancelled=true;jobs.forEach(job=>job.cancel());target.replaceChildren();};
   },[pdf,width]);
-  return <section className="native-pdf-preview" aria-label="论文 PDF 预览"><div className="pdf-preview-status">{record?`${dirty||record.revision!==revision?'旧预览 · ':''}源版本 r${record.revision}`:'保存并编译后查看 PDF'}{record&&<a href={'/api/assets/'+encodeURIComponent(typeof record.asset==='string'?record.asset:record.asset.sha)} target="_blank" rel="noreferrer">打开 PDF</a>}</div>{error&&<p role="alert">PDF 打开失败：{error}</p>}<div ref={host} className="native-pdf-pages"/>{!record&&<p className="editor-empty">编译结果会在这里显示，保留对应的源版本。</p>}</section>;
+  return <section className="native-pdf-preview" aria-label="论文 PDF 预览"><div className="pdf-preview-status">{record?`${dirty||record.revision!==revision?'旧预览 · ':''}源版本 r${record.revision}`:'PDF 预览'}{record&&<a href={'/api/assets/'+encodeURIComponent(typeof record.asset==='string'?record.asset:record.asset.sha)} target="_blank" rel="noreferrer">打开 PDF</a>}</div>{error&&<p role="alert">PDF 打开失败：{error}</p>}<div ref={host} className="native-pdf-pages"/>{!record&&<p className="editor-empty">{compilerAvailable?'保存并编译后，在这里预览 PDF。':'安装 LaTeX 后即可预览 PDF。现在可以继续编辑和保存源稿。'}</p>}</section>;
 }

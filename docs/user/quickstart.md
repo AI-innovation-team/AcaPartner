@@ -84,6 +84,8 @@ python3 tools/start_local.py --help
 | 数据生成 / 依赖重做 | 符合产品运行时锁定记录的 Snakemake 环境、数据与代码授权、任务执行器及相应预算；只有安装 Snakemake 不等于运行时已就绪 |
 | Agent 修订、模型协作 | 已配置的模型 provider、所需本地客户端或凭据、明确权限和预算，以及另行启用的执行器；只写入 provider 配置不会让本入口自动执行队列 |
 
+打开或新建 LaTeX 稿件时，若服务端缺少编译器，工具栏会显示 **安装 LaTeX**。打开指引，在运行 AcaPartner 的机器上按提示安装；团队工作台可请管理员处理。安装期间可以继续编辑和保存源稿。完成后点击 **重新检测**，再回到稿件选择 **保存并编译**。已有 PDF 仍可查看。
+
 可按需编辑私有的 `config.json` 后重启；保留 `workdesk_w1a`、`access_token_file` 和 `local_accounts_file`。可选工具缺失时，相应功能会显示不可用或返回具体错误；基本启动不会代为安装这些工具。更多操作参见 [使用说明](../workbench-guide.md)。
 
 ## 明确启用 Agent 任务运行器

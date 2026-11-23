@@ -31,7 +31,7 @@ DOCX 上限32MiB；服务端验证 OPC 容器、CRC、路径、内容类型及�
 
 所有接口沿用当前项目/论文身份、项目授权、准确基础修订与稳定请求标识；没有任意路径导入或数据库直写入口。
 
-- `document.read(project_id, object_id?)`：读取指定稿件及其独立来源、当前 DOCX 资产 URL、预览和适配器状态。省略对象 ID 时读取默认论文。
+- `document.read(project_id, object_id?)`：读取指定稿件及其独立来源、当前 DOCX 资产 URL、预览和适配器状态。省略对象 ID 时读取默认论文。LaTeX 适配器返回服务端平台和当前编译器可用性。安装指引复用此只读接口重新检测，仅更新编辑器的运行时状态。
 - `document.create(project_id, request_key, format, title)`：登记一份空白 DOCX 或 LaTeX 稿件。返回独立的稿件 ID 和起始修订，沿用后续保存与编译接口。
 - `document.save(project_id, object_id, expected_revision, request_key, format, source)`：DOCX 的 `source={base64, filename}`；LaTeX 为文本。拒绝过期版本，相同请求可重放；当前主源与其他文件保留。首次原生保存建立绑定。
 - `document.select(project_id, object_id, expected_revision, request_key, format)`：明确把一份已保存的 DOCX/LaTeX 设为论文主源。需要源文件存在，采用独立事务、权限检查、CAS 和幂等记录，不转换内容。历史 Univer 也可通过此接口兼容选择。

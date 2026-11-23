@@ -26,7 +26,7 @@ async function saveLatex(page:Page,compilerAvailable:boolean){
   await compile.click();
   await expect(page.getByRole('img',{name:'PDF 第 1 页',exact:true})).toBeVisible();
  }else{
-  await expect(compile).toBeDisabled();
+  await expect(toolbar.getByRole('button',{name:'安装 LaTeX',exact:true})).toBeVisible();
   await toolbar.getByRole('button',{name:'保存',exact:true}).click();
   await expect(toolbar.getByRole('status')).toContainText('已保存到项目');
  }
@@ -111,4 +111,39 @@ test('Deliverables show retained LaTeX and support multiple independent manuscri
  const current=await api('document.read',{project_id:project.id});
  expect(current.revision).toBe(primary.revision);
  expect(current.sources.latex).toBe(tex);
+});
+
+test('missing LaTeX offers host installation and rechecks without replacing a dirty draft', async ({page,request}) => {
+ const api = await client(request);
+ const project = await api('project.create', {title:'LaTeX 安装引导'});
+ let installed = false;
+ await page.route('**/api/action', async route => {
+  if (route.request().postDataJSON().action !== 'document.read') return route.continue();
+  const response = await route.fetch();
+  const body = await response.json();
+  Object.assign(body.result.adapters.latex, {compiler_available:installed, host_platform:'linux'});
+  await route.fulfill({response, json:body});
+ });
+ await page.goto(origin + '/workdesk/editors.html?project=' + project.id);
+ await page.getByRole('button',{name:'新建 LaTeX',exact:true}).click();
+ const source = page.getByRole('textbox',{name:'LaTeX 论文源码'});
+ const install = page.getByRole('button',{name:'安装 LaTeX',exact:true});
+ const setup = page.getByRole('dialog',{name:'配置 LaTeX 编译器'});
+ const draft = tex.replace('Native LaTeX round trip.', 'Unsaved text before detecting TeX.');
+ await source.fill(draft);
+ await install.click();
+ await expect(setup.getByText(/sudo apt install/)).toBeVisible();
+ await setup.getByRole('button',{name:'重新检测'}).click();
+ await expect(setup.getByRole('status')).toContainText('仍未检测到');
+ await setup.getByRole('button',{name:'继续写稿'}).click();
+ await expect(source).toContainText('Unsaved text before detecting TeX.');
+ const before = await api('document.read',{project_id:project.id});
+ await install.click();
+ installed = true;
+ await setup.getByRole('button',{name:'重新检测'}).click();
+ await expect(setup.getByRole('status')).toContainText('已检测到');
+ await setup.getByRole('button',{name:'返回稿件'}).click();
+ await expect(page.getByRole('button',{name:'保存并编译'})).toBeEnabled();
+ await expect(source).toContainText('Unsaved text before detecting TeX.');
+ expect((await api('document.read',{project_id:project.id})).revision).toBe(before.revision);
 });

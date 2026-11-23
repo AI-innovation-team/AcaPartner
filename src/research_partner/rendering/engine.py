@@ -387,7 +387,12 @@ class ArtifactEngine:
                 "RESEARCH_PARTNER_LATEX",
                 shutil.which("pdflatex")
                 or shutil.which("xelatex")
-                or shutil.which("lualatex"),
+                or shutil.which("lualatex")
+                or (
+                    shutil.which("/Library/TeX/texbin/xelatex")
+                    if sys.platform == "darwin"
+                    else None
+                ),
             ),
             "pdftotext": shutil.which("pdftotext"),
             "timeout": 90,

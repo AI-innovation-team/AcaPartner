@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import stat
+import sys
 import uuid
 import zipfile
 from pathlib import PurePosixPath
@@ -141,7 +142,8 @@ def _view(app, obj, connection=None):
                      'comments': True, 'tracked_changes': True},
             'univer': {'editor': 'univer', 'snapshot_editing': True, 'docx_exchange_ready': False,
                        'reason': 'DOCX 导入导出需要配置 Univer Pro 转换后端与授权。'},
-            'latex': {'editor': 'codemirror', 'preview': 'pdfjs', 'compiler_available': bool(compiler and shutil.which(compiler))},
+            'latex': {'editor': 'codemirror', 'preview': 'pdfjs', 'host_platform': sys.platform,
+                      'compiler_available': bool(compiler and shutil.which(compiler))},
         },
     }
 
