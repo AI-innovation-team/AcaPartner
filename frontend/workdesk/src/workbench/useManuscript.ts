@@ -28,7 +28,22 @@ export function useManuscript(report:(error:unknown)=>void,onDirty:(fmt:SourceFo
  }
  async function load(id:string){await flush();const turn=++epoch.current;setLoading(true);setDoc(null);docRef.current=null;setDraft(null);draftRef.current=null;setEntries([]);setNotice('');setRemote(null);try{const value=await read(id);if(turn!==epoch.current)return;await adopt(value);await files(id);}finally{if(turn===epoch.current)setLoading(false);}}
  useEffect(()=>{const protect=(event:BeforeUnloadEvent)=>{if(draftRef.current?.docxDirty||draftRef.current?.latexDirty)event.preventDefault();};window.addEventListener('beforeunload',protect);return()=>{epoch.current++;window.removeEventListener('beforeunload',protect);};},[]);
- useEffect(()=>{let alive=true;const check=async()=>{const current=docRef.current;if(!current||saving.current||document.hidden)return;try{const latest:NativeDocument=await read(current.project_id);if(alive&&docRef.current?.id===current.id&&latest.revision>docRef.current.revision)setRemote(latest);}catch{}};const timer=setInterval(()=>void check(),6000);window.addEventListener('focus',check);return()=>{alive=false;clearInterval(timer);window.removeEventListener('focus',check);};},[]);
+ async function refreshDocumentStatus(){
+  const previous=docRef.current,turn=epoch.current;
+  if(!previous)return;
+  const latest:NativeDocument=await read(previous.project_id);
+  const current=docRef.current;
+  if(turn!==epoch.current||!current||current.id!==latest.id)return;
+  if(latest.revision>current.revision)setRemote(latest);
+  const latex=latest.adapters.latex;
+  if(current.adapters.latex.compiler_available!==latex.compiler_available||current.adapters.latex.host_platform!==latex.host_platform){
+   const updated={...current,adapters:{...current.adapters,latex}};
+   docRef.current=updated;setDoc(updated);
+  }
+  return latex.compiler_available;
+ }
+ useEffect(()=>{const check=()=>{if(!saving.current&&!document.hidden)void refreshDocumentStatus().catch(()=>{});};const timer=setInterval(check,6000);window.addEventListener('focus',check);return()=>{clearInterval(timer);window.removeEventListener('focus',check);};},[]);
+
  async function run(fn:()=>Promise<void>){if(saving.current)return;saving.current=true;setBusy(true);try{await fn();}catch(e){callbacks.current.report(e);}finally{saving.current=false;setBusy(false);}}
  async function save(fmt:SourceFormat){
   const current=docRef.current,d=draftRef.current;if(!current||!d)throw new Error('论文尚未就绪');const turn=epoch.current;
@@ -51,6 +66,6 @@ export function useManuscript(report:(error:unknown)=>void,onDirty:(fmt:SourceFo
  async function prepareCheckout(){await run(async()=>{const current=docRef.current!;setCheckout(await command('document.checkout',{project_id:current.project_id,object_id:current.id,expected_revision:current.revision,request_key:requestId()}));});}
  async function commitCheckout(){await run(async()=>{if(!checkout)return;const value=await command('document.commit',{project_id:checkout.project_id,object_id:checkout.object_id,expected_revision:checkout.base_revision,checkout_id:checkout.id,request_key:requestId()});setRemote(value);setNotice('文件已提交，请载入新版本');});}
  const filename=(fmt:SourceFormat)=>target?.filename||entries.find(entry=>entry.source_format===fmt&&entry.object_id===doc?.id)?.path.split('/').at(-1)||('论文.'+(fmt==='docx'?'docx':'tex'));
- return {doc,draft,loading,busy,notice,remote,entries,backup,docxInput,editorKey,ready,checkout,editor,setReady,load,flush,park,clear,saveAction,create,has,editLatex,changeDocx,snapshot,importDocx,select,reload,restore,downloadDraft,prepareCheckout,commitCheckout,filename,refreshFiles:()=>docRef.current?files(docRef.current.project_id):Promise.resolve()};
+ return {doc,draft,loading,busy,notice,remote,entries,backup,docxInput,editorKey,ready,checkout,editor,setReady,load,flush,park,clear,saveAction,create,has,editLatex,changeDocx,snapshot,importDocx,select,reload,restore,downloadDraft,prepareCheckout,commitCheckout,filename,refreshDocumentStatus,refreshFiles:()=>docRef.current?files(docRef.current.project_id):Promise.resolve()};
 }
 export type ManuscriptController=ReturnType<typeof useManuscript>;

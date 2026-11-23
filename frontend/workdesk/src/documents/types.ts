@@ -7,7 +7,7 @@ export type NativeDocument={
   sources:{latex:string;univer:unknown|null;docx:Asset|null};
   structured_blocks:{id:string;kind:string;text:string}[];
   render:RenderRecord|null;
-  adapters:{docx:{editor:string;version:string;file_editing:boolean;max_bytes:number};latex:{compiler_available:boolean}};
+  adapters:{docx:{editor:string;version:string;file_editing:boolean;max_bytes:number};latex:{compiler_available:boolean;host_platform?:string}};
 };
 export type Checkout={id:string;path:string;object_id:string;project_id:string;base_revision:number;source_sha256:string};
 export const emptyLatex=String.raw`\documentclass{article}

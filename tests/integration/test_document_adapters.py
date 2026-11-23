@@ -1,6 +1,7 @@
 """Real Store, source identity, conflicts and existing TeX rendering adapter."""
 
 import shutil
+import sys
 import base64
 import io
 import zipfile
@@ -58,6 +59,18 @@ class DocumentAdapters(unittest.TestCase):
                 "format": fmt,
             }
         )
+
+    def test_compiler_detection_uses_server_and_preserves_manuscript_revision(self):
+        compiler = Path(self.tmp.name) / "xelatex"
+        self.app.config["rendering"] = {"latex": str(compiler)}
+        before = self.read()
+        self.assertEqual(before["adapters"]["latex"]["host_platform"], sys.platform)
+        self.assertFalse(before["adapters"]["latex"]["compiler_available"])
+        compiler.touch(mode=0o700)
+        after = self.read()
+        self.assertTrue(after["adapters"]["latex"]["compiler_available"])
+        self.assertEqual(after["revision"], before["revision"])
+        self.assertEqual(after["sources"], before["sources"])
 
     def test_read_is_not_a_source_conversion(self):
         before = self.app.store.get(self.paper["id"])
